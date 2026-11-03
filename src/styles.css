@@ -1,0 +1,450 @@
+:root {
+  --bg: #14161c;
+  --panel: #1c1f28;
+  --panel-2: #232733;
+  --border: #2e3340;
+  --text: #e7e9ee;
+  --text-dim: #9aa1b0;
+  --accent: #6ea8ff;
+  --accent-dim: #3d5a8f;
+  --danger: #ff6b6b;
+  --ok: #52c98a;
+  --radius: 10px;
+  font-family: -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+/* While scanning, the webview itself must be transparent so the native
+   camera preview underneath (windowed:true mode) shows through. */
+html.qr-scanning,
+html.qr-scanning body {
+  background: transparent !important;
+}
+
+.qr-scan-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.qr-scan-frame {
+  width: 240px;
+  height: 240px;
+  border: 3px solid #fff;
+  border-radius: 16px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+}
+
+.qr-scan-hint {
+  margin-top: 16px;
+  color: #fff;
+  font-size: 14px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.qr-scan-cancel {
+  margin-top: 20px;
+  pointer-events: auto;
+}
+
+button {
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 8px 14px;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+button:hover {
+  background: #2a3040;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b0e14;
+  font-weight: 600;
+}
+
+button.primary:hover {
+  filter: brightness(1.08);
+}
+
+button.danger {
+  color: var(--danger);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input,
+textarea {
+  font-family: inherit;
+  font-size: 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 9px 11px;
+  width: 100%;
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  margin-top: 12px;
+}
+
+label:first-child {
+  margin-top: 0;
+}
+
+.centered-screen {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+  animation: fade-in 0.18s ease;
+}
+
+.auth-card {
+  width: 380px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+}
+
+.auth-card h1 {
+  font-size: 20px;
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-card .subtitle {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+
+.error-box {
+  background: rgba(255, 107, 107, 0.12);
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  color: var(--danger);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  margin-top: 14px;
+}
+
+.field-row {
+  display: flex;
+  gap: 10px;
+}
+.field-row > div {
+  flex: 1;
+}
+
+.auth-actions {
+  margin-top: 20px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  padding: 0;
+  font-size: 12px;
+  text-decoration: underline;
+}
+.link-btn:hover {
+  background: none;
+  color: var(--accent);
+}
+
+.folder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.folder-row .path {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-dim);
+  word-break: break-all;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.qr-box {
+  background: #fff;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  justify-content: center;
+  margin: 16px 0;
+}
+.qr-box svg {
+  width: 220px;
+  height: 220px;
+}
+
+.secret-box {
+  text-align: center;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 2px;
+  font-size: 15px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  word-break: break-all;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
+/* Main app layout */
+.app-shell {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  height: 100%;
+}
+
+.sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+}
+
+.sidebar h1 {
+  font-size: 16px;
+  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-box {
+  margin-bottom: 12px;
+}
+
+.account-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.account-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.account-item:hover {
+  background: var(--panel-2);
+}
+.account-item.active {
+  background: var(--panel-2);
+  border-color: var(--accent-dim);
+}
+.account-item .name {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.account-item .user {
+  color: var(--text-dim);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.main-panel {
+  padding: 28px 36px;
+  overflow-y: auto;
+}
+
+.mobile-back-btn {
+  display: none;
+  margin-bottom: 16px;
+}
+
+/* Phone-width layout: show either the account list or the selected
+   account/settings/form full-screen, sliding between them, never both
+   side by side. */
+@media (max-width: 700px) {
+  .app-shell {
+    display: block;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+  .sidebar {
+    position: absolute;
+    inset: 0;
+    height: auto;
+    border-right: none;
+    padding-top: max(16px, env(safe-area-inset-top));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    transform: translateX(0);
+    transition: transform 0.22s ease;
+  }
+  .main-panel {
+    position: absolute;
+    inset: 0;
+    background: var(--bg);
+    padding: max(16px, env(safe-area-inset-top)) 18px max(16px, env(safe-area-inset-bottom));
+    transform: translateX(100%);
+    transition: transform 0.22s ease;
+  }
+  .app-shell.detail-open .sidebar {
+    transform: translateX(-100%);
+  }
+  .app-shell.detail-open .main-panel {
+    transform: translateX(0);
+  }
+  .mobile-back-btn {
+    display: inline-block;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.empty-state {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+.detail-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.detail-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.form-grid {
+  max-width: 520px;
+}
+
+.field-with-action {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.field-with-action input {
+  flex: 1;
+}
+.field-with-action button {
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--panel-2);
+  border: 1px solid var(--ok);
+  color: var(--ok);
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  animation: fade-in-out 2s ease forwards;
+}
+@keyframes fade-in-out {
+  0% { opacity: 0; transform: translateY(6px); }
+  10% { opacity: 1; transform: translateY(0); }
+  85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.settings-panel {
+  max-width: 520px;
+}
+.settings-row {
+  margin-bottom: 18px;
+}
+.settings-row .label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
