@@ -56,3 +56,13 @@ des = "0.8"
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
 
+
+# Argon2id is ~50x slower unoptimised; keep debug/test unlocks snappy.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.aes-gcm]
+opt-level = 3
+[profile.dev.package.aes]
+opt-level = 3

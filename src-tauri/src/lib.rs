@@ -831,6 +831,20 @@ pub fn run() {
                 keep_unlocked_until: 0,
             }));
 
+            // Debug builds only: PASSVAULT_TEST_SCRIPT=/path/to.js runs that
+            // script inside the window (UI smoke tests without a real
+            // keyboard). Compiled out of release builds entirely.
+            #[cfg(debug_assertions)]
+            if let Ok(path) = std::env::var("PASSVAULT_TEST_SCRIPT") {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    if let (Ok(js), Some(w)) = (std::fs::read_to_string(&path), handle.get_webview_window("main")) {
+                        let _ = w.eval(&js);
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

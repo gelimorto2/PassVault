@@ -231,23 +231,51 @@ pub async fn biometric_unlock(
             return Err("Biometric unlock isn't available on this device.".into());
         };
         let json = b.load_secret()?;
-        return unlock_with_payload(&state, &json);
+        let r = unlock_with_payload(&state, &json);
+        if is_stale(&r) {
+            b.clear_secret();
+        }
+        return r.map_err(stale_msg);
     }
     #[cfg(target_os = "linux")]
     {
         let _ = app;
-        let json = tauri::async_runtime::spawn_blocking(|| {
+        let app2 = app.clone();
+        let json = tauri::async_runtime::spawn_blocking(move || {
             face::verify_face()?;
+            use tauri::Emitter;
+            let _ = app2.emit("unlock-progress", "Recognised — unlocking…");
             face::load_secret()
         })
         .await
         .map_err(|e| e.to_string())??;
-        return unlock_with_payload(&state, &json);
+        let r = unlock_with_payload(&state, &json);
+        if is_stale(&r) {
+            face::clear_secret();
+        }
+        return r.map_err(stale_msg);
     }
     #[allow(unreachable_code)]
     {
         let _ = (app, state);
         Err("Biometric unlock isn't available on this platform.".into())
+    }
+}
+
+/// Saved biometric data that no longer opens the vault (master password
+/// changed, vault replaced/imported, …) is useless — drop it so the next
+/// launch goes straight to the password form instead of failing forever.
+#[cfg(any(target_os = "android", target_os = "linux"))]
+fn is_stale<T>(r: &Result<T, String>) -> bool {
+    matches!(r, Err(e) if e.contains("Wrong master password") || e.contains("corrupted"))
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+fn stale_msg(e: String) -> String {
+    if e.contains("Wrong master password") || e.contains("corrupted") {
+        "Saved unlock data was out of date and has been removed. Unlock with your password, then turn it back on in Settings.".into()
+    } else {
+        e
     }
 }
 
@@ -329,7 +357,7 @@ pub mod face {
     /// match; Howdy's documented codes map to friendlier messages.
     pub fn verify_face() -> Result<(), String> {
         let h = howdy()?;
-        let status = Command::new(&h.python)
+        let out = Command::new(&h.python)
             .arg(&h.compare)
             .arg(user())
             // AppImage/flatpak runtimes leak these into children and break
@@ -337,19 +365,42 @@ pub mod face {
             .env_remove("LD_LIBRARY_PATH")
             .env_remove("PYTHONHOME")
             .env_remove("PYTHONPATH")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
+            .output()
             .map_err(|e| format!("Couldn't start Howdy: {e}"))?;
-        match status.code() {
-            Some(0) => Ok(()),
-            Some(10) => Err("Howdy has no face model for you — run: sudo howdy add".into()),
-            Some(11) => Err("Face not recognised. Look at the camera and try again.".into()),
-            Some(13) => Err("Too dark for the camera — add some light and try again.".into()),
-            Some(1) => Err("Howdy couldn't open the camera (in use by another app?).".into()),
-            Some(c) => Err(format!("Face check failed (Howdy code {c}).")),
-            None => Err("Face check was interrupted.".into()),
+        let code = out.status.code();
+        if code == Some(0) {
+            return Ok(());
         }
+        // Howdy's own last words (e.g. "Failed to read camera", a Python
+        // traceback's final line, "No face model known…") so the user sees
+        // the real reason, not just our summary.
+        let raw = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let detail: String = raw
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .last()
+            .unwrap_or("")
+            .chars()
+            .take(240)
+            .collect();
+        let summary = match code {
+            Some(10) => "Howdy has no face model for you — run: sudo howdy add".to_string(),
+            Some(11) => "Face not recognised. Look at the camera and try again.".to_string(),
+            Some(13) => "Too dark for the camera — add some light and try again.".to_string(),
+            Some(1) => "Howdy couldn't use the camera.".to_string(),
+            Some(c) => format!("Face check failed (Howdy exit code {c})."),
+            None => "Face check was interrupted.".to_string(),
+        };
+        Err(if detail.is_empty() {
+            summary
+        } else {
+            format!("{summary}\nHowdy: {detail}")
+        })
     }
 
     fn connect() -> Result<SecretService, String> {
@@ -402,6 +453,20 @@ pub mod face {
                     let _ = item.delete();
                 }
             }
+        }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod face_tests {
+    /// PV_FACE_CLEAR=1 cargo test --lib face_keyring_state -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn face_keyring_state() {
+        println!("face secret present: {}", super::face::has_secret());
+        if std::env::var("PV_FACE_CLEAR").is_ok() {
+            super::face::clear_secret();
+            println!("after clear: {}", super::face::has_secret());
         }
     }
 }

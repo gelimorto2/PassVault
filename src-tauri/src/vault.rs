@@ -253,3 +253,37 @@ mod tests {
         assert!(d.tombstones.is_empty());
     }
 }
+
+#[cfg(test)]
+mod fixture {
+    /// Builds a throwaway vault for UI testing:
+    /// PV_TEST_DIR=/path cargo test --lib make_test_vault -- --ignored
+    /// password "test-master-pw", TOTP secret JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP
+    #[test]
+    #[ignore]
+    fn make_test_vault() {
+        let dir = std::path::PathBuf::from(std::env::var("PV_TEST_DIR").unwrap());
+        let now = crate::now_millis();
+        let mk = |i: usize, name: &str, user: &str, pw: &str, url: &str, fav: bool| super::Account {
+            id: format!("test-{i}"), name: name.into(), username: user.into(), password: pw.into(),
+            url: url.into(), notes: if i == 0 { "Recovery codes in the drawer.\nSecond line.".into() } else { String::new() },
+            created_at: now, updated_at: now - (i as i64) * 86_400_000, favorite: fav, tags: vec![],
+        };
+        let data = super::VaultData {
+            accounts: vec![
+                mk(0, "GitHub", "leo-dev", "x7#Kq9!vL2@pR4zW8mN", "https://github.com", true),
+                mk(1, "Instagram", "leo.photos", "summer2024", "instagram.com", false),
+                mk(2, "Samsung account", "leo@example.com", "Tr0ub4dor&3-horse-battery", "account.samsung.com", true),
+                mk(3, "Netflix", "leo@example.com", "summer2024", "netflix.com", false),
+                mk(4, "Amazon", "leo@example.com", "Q!9vB#2nM$8kL@4x", "amazon.fr", false),
+                mk(5, "Discord", "leo#1234", "dK3$mP9@qL7!", "discord.com", false),
+                mk(6, "Free Mobile", "12345678", "aB3dE6gH9", "mobile.free.fr", false),
+                mk(7, "Spotify", "leo", "ZxC!v8B#n2M", "open.spotify.com", false),
+            ],
+            tombstones: vec![],
+        };
+        let vp = dir.join("PassVault").join("vault.enc");
+        super::write_vault(&vp, "test-master-pw", &data).unwrap();
+        super::write_device_secret(&dir.join("device.json"), "test-master-pw", "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP").unwrap();
+    }
+}

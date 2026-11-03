@@ -1,0 +1,20 @@
+[Unit]
+Description=PassVault home-network sync (zero-knowledge, LAN only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=leo
+Environment=PASSVAULT_SYNC_BIND=192.168.0.246
+Environment=PASSVAULT_SYNC_PORT=8787
+Environment=PASSVAULT_SYNC_DATA=/home/leo/passvault-sync/data
+ExecStart=/usr/bin/python3 /home/leo/passvault-sync/passvault_sync.py
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/leo/passvault-sync
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
