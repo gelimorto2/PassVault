@@ -127,8 +127,12 @@ function sheet({ title, body = "", input = null, actions }) {
       b.onclick = () => done(input ? (a.value ? inp.value : null) : a.value);
       acts.appendChild(b);
     }
-    scrim.onclick = (e) => e.target === scrim && done(input ? null : actions.find((a) => !a.value)?.value ?? null);
-    if (inp) inp.onkeydown = (e) => e.key === "Enter" && done(inp.value);
+    scrim.onclick = (e) => {
+    if (e.target === scrim) done(input ? null : actions.find((a) => !a.value)?.value ?? null);
+  };
+    if (inp) inp.onkeydown = (e) => {
+    if (e.key === "Enter") done(inp.value);
+  };
     scrim.appendChild(s);
     document.body.appendChild(scrim);
     inp?.focus();
@@ -378,7 +382,9 @@ function renderSetupConfirm() {
     </div>`);
   const code = w.querySelector("#code");
   code.focus();
-  code.onkeydown = (e) => e.key === "Enter" && w.querySelector("#confirm").click();
+  code.onkeydown = (e) => {
+    if (e.key === "Enter") w.querySelector("#confirm").click();
+  };
   w.querySelector("#back").onclick = () => setState({ screen: "setup", setupPending: null, error: "" });
   w.querySelector("#confirm").onclick = async (ev) => {
     try {
@@ -520,9 +526,15 @@ function renderPasswordUnlock() {
   const pw = w.querySelector("#pw");
   const code = w.querySelector("#code");
   pw.focus();
-  pw.onkeydown = (e) => e.key === "Enter" && code.focus();
-  code.oninput = () => code.value.length === 6 && pw.value && w.querySelector("#unlock").click();
-  code.onkeydown = (e) => e.key === "Enter" && w.querySelector("#unlock").click();
+  pw.onkeydown = (e) => {
+    if (e.key === "Enter") code.focus();
+  };
+  code.oninput = () => {
+    if (code.value.length === 6 && pw.value) w.querySelector("#unlock").click();
+  };
+  code.onkeydown = (e) => {
+    if (e.key === "Enter") w.querySelector("#unlock").click();
+  };
   w.querySelector("#use-bio")?.addEventListener("click", () => {
     unlockUsePassword = false;
     render();
