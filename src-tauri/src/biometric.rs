@@ -5,8 +5,6 @@ use tauri::{
 };
 
 #[cfg(target_os = "android")]
-use crate::vault;
-#[cfg(target_os = "android")]
 use serde::{Deserialize, Serialize};
 #[cfg(target_os = "android")]
 use tauri::{plugin::PluginHandle, Manager};
@@ -18,8 +16,8 @@ use tauri::{plugin::PluginHandle, Manager};
 /// folder) is no easier to crack; this only changes what "possessing this
 /// specific unlocked device" gets you, which is the same trust boundary
 /// biometric unlock already implies for the password alone.
-#[cfg(target_os = "android")]
-#[derive(Serialize, Deserialize)]
+#[cfg(any(target_os = "android", target_os = "linux"))]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct BiometricPayload {
     password: String,
     secret_b32: String,
@@ -95,10 +93,14 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
 pub struct BiometricStatus {
     available: bool,
     has_saved_secret: bool,
+    /// "fingerprint" (Android) or "face" (Linux + Howdy) — drives UI wording.
+    kind: &'static str,
+    /// Why it's unavailable, when we can tell (e.g. Howdy has no face model).
+    reason: Option<String>,
 }
 
 #[tauri::command]
-pub fn biometric_status(app: tauri::AppHandle) -> BiometricStatus {
+pub async fn biometric_status(app: tauri::AppHandle) -> BiometricStatus {
     #[cfg(target_os = "android")]
     {
         if let Some(b) = app.try_state::<Biometric<tauri::Wry>>() {
@@ -106,31 +108,60 @@ pub fn biometric_status(app: tauri::AppHandle) -> BiometricStatus {
             return BiometricStatus {
                 available,
                 has_saved_secret,
+                kind: "fingerprint",
+                reason: None,
             };
         }
     }
-    #[cfg(not(target_os = "android"))]
-    let _ = app;
-    BiometricStatus {
-        available: false,
-        has_saved_secret: false,
+    #[cfg(target_os = "linux")]
+    {
+        let _ = &app;
+        return tauri::async_runtime::spawn_blocking(|| {
+            let (available, reason) = match face::howdy() {
+                Ok(_) => (true, None),
+                Err(e) => (false, Some(e)),
+            };
+            BiometricStatus {
+                available,
+                has_saved_secret: available && face::has_secret(),
+                kind: "face",
+                reason,
+            }
+        })
+        .await
+        .unwrap_or(BiometricStatus {
+            available: false,
+            has_saved_secret: false,
+            kind: "face",
+            reason: None,
+        });
+    }
+    #[allow(unreachable_code)]
+    {
+        let _ = app;
+        BiometricStatus {
+            available: false,
+            has_saved_secret: false,
+            kind: "none",
+            reason: None,
+        }
     }
 }
 
 /// Called right after a normal password+code unlock succeeds, if the user
 /// opts in, to wrap the password and TOTP secret behind biometrics so a
-/// single fingerprint prompt can supply both factors next time.
+/// single fingerprint/face check can supply both factors next time.
 #[tauri::command]
-pub fn enable_biometric_unlock(
+pub async fn enable_biometric_unlock(
     app: tauri::AppHandle,
     state: State<'_, AppStateM>,
     password: String,
 ) -> Result<(), String> {
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     {
         let secret_b32 = {
             let s = state.lock().unwrap();
-            vault::read_device_secret(&s.device_path, &password)
+            crate::vault::read_device_secret(&s.device_path, &password)
                 .map_err(|_| "Wrong master password.".to_string())?
         };
         let payload = BiometricPayload {
@@ -138,27 +169,50 @@ pub fn enable_biometric_unlock(
             secret_b32,
         };
         let json = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
-        if let Some(b) = app.try_state::<Biometric<tauri::Wry>>() {
-            return b.save_secret(&json);
+        #[cfg(target_os = "android")]
+        {
+            if let Some(b) = app.try_state::<Biometric<tauri::Wry>>() {
+                return b.save_secret(&json);
+            }
+            return Err("Biometric unlock isn't available on this device.".into());
         }
-        Err("Biometric unlock isn't available on this device.".into())
+        #[cfg(target_os = "linux")]
+        {
+            let _ = app;
+            return tauri::async_runtime::spawn_blocking(move || {
+                // Prove Howdy actually recognises the person enabling it.
+                face::verify_face()?;
+                face::save_secret(&json)
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+        }
     }
-    #[cfg(not(target_os = "android"))]
+    #[allow(unreachable_code)]
     {
         let _ = (app, state, password);
-        Err("Biometric unlock is only available on mobile.".into())
+        Err("Biometric unlock isn't available on this platform.".into())
     }
 }
 
 #[tauri::command]
-pub fn disable_biometric_unlock(app: tauri::AppHandle) {
+pub async fn disable_biometric_unlock(app: tauri::AppHandle) {
+    disable_biometric_unlock_inner(&app);
+}
+
+pub fn disable_biometric_unlock_inner(app: &tauri::AppHandle) {
     #[cfg(target_os = "android")]
     {
         if let Some(b) = app.try_state::<Biometric<tauri::Wry>>() {
             b.clear_secret();
         }
     }
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_os = "linux")]
+    {
+        let _ = app;
+        face::clear_secret();
+    }
+    #[cfg(not(any(target_os = "android", target_os = "linux")))]
     let _ = app;
 }
 
@@ -167,7 +221,7 @@ pub fn disable_biometric_unlock(app: tauri::AppHandle) {
 /// biometric-gated secret rather than skipped, so it still goes through the
 /// exact same verification `unlock` does.
 #[tauri::command]
-pub fn biometric_unlock(
+pub async fn biometric_unlock(
     app: tauri::AppHandle,
     state: State<'_, AppStateM>,
 ) -> Result<Vec<crate::vault::Account>, String> {
@@ -177,16 +231,177 @@ pub fn biometric_unlock(
             return Err("Biometric unlock isn't available on this device.".into());
         };
         let json = b.load_secret()?;
-        let payload: BiometricPayload = serde_json::from_str(&json)
-            .map_err(|_| "Saved fingerprint data is corrupted; re-enable it.".to_string())?;
-        let secret_bytes = crate::totp::from_base32(&payload.secret_b32)
-            .ok_or("Saved fingerprint data is corrupted; re-enable it.")?;
-        let code = crate::totp::current_code(&secret_bytes);
-        crate::do_unlock(&state, &payload.password, &code)
+        return unlock_with_payload(&state, &json);
     }
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_os = "linux")]
+    {
+        let _ = app;
+        let json = tauri::async_runtime::spawn_blocking(|| {
+            face::verify_face()?;
+            face::load_secret()
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        return unlock_with_payload(&state, &json);
+    }
+    #[allow(unreachable_code)]
     {
         let _ = (app, state);
-        Err("Biometric unlock is only available on mobile.".into())
+        Err("Biometric unlock isn't available on this platform.".into())
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+fn unlock_with_payload(state: &State<'_, AppStateM>, json: &str) -> Result<Vec<crate::vault::Account>, String> {
+    let payload: BiometricPayload = serde_json::from_str(json)
+        .map_err(|_| "Saved unlock data is corrupted; re-enable it in Settings.".to_string())?;
+    let secret_bytes = crate::totp::from_base32(&payload.secret_b32)
+        .ok_or("Saved unlock data is corrupted; re-enable it in Settings.")?;
+    let code = crate::totp::current_code(&secret_bytes);
+    crate::do_unlock(state, &payload.password, &code)
+}
+
+/// Linux face unlock via Howdy (https://github.com/boltgolt/howdy).
+///
+/// Howdy only answers "is this the enrolled user, yes/no" — it can't hand
+/// out a key. So, mirroring the Android design, the master password + TOTP
+/// secret are kept in the desktop keyring (GNOME Keyring / KWallet via the
+/// Secret Service API, encrypted at rest with your login password) and are
+/// only read after Howdy reports a match. This is a convenience gate, not a
+/// cryptographic one: any program running as you could read that keyring
+/// entry, which is why it's opt-in.
+#[cfg(target_os = "linux")]
+pub mod face {
+    use dbus_secret_service::{EncryptionType, SecretService};
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    const ATTRS: [(&str, &str); 2] = [("application", "com.leo.passvault"), ("purpose", "face-unlock")];
+
+    fn user() -> String {
+        std::env::var("USER")
+            .or_else(|_| std::env::var("LOGNAME"))
+            .unwrap_or_default()
+    }
+
+    pub struct Howdy {
+        python: PathBuf,
+        compare: PathBuf,
+    }
+
+    pub fn howdy() -> Result<Howdy, String> {
+        let roots = [
+            "/usr/local/lib/x86_64-linux-gnu/howdy",
+            "/usr/lib/x86_64-linux-gnu/howdy",
+            "/usr/local/lib/aarch64-linux-gnu/howdy",
+            "/usr/lib/aarch64-linux-gnu/howdy",
+            "/usr/lib/security/howdy",
+            "/lib/security/howdy",
+            "/usr/lib64/security/howdy",
+        ];
+        let compare = roots
+            .iter()
+            .map(|r| PathBuf::from(r).join("compare.py"))
+            .find(|p| p.is_file())
+            .ok_or("Howdy isn't installed.")?;
+        let python = ["/usr/bin/python3", "/usr/bin/python"]
+            .iter()
+            .map(PathBuf::from)
+            .find(|p| p.is_file())
+            .ok_or("Python 3 isn't installed.")?;
+        let u = user();
+        let has_model = [
+            "/usr/local/etc/howdy/models",
+            "/etc/howdy/models",
+            "/usr/lib/security/howdy/models",
+            "/lib/security/howdy/models",
+        ]
+        .iter()
+        .any(|d| PathBuf::from(d).join(format!("{u}.dat")).is_file());
+        if !has_model {
+            return Err(format!("Howdy has no face model for {u} yet — run: sudo howdy add"));
+        }
+        Ok(Howdy { python, compare })
+    }
+
+    /// Runs Howdy's own matcher (same thing the login screen uses). Exit 0 =
+    /// match; Howdy's documented codes map to friendlier messages.
+    pub fn verify_face() -> Result<(), String> {
+        let h = howdy()?;
+        let status = Command::new(&h.python)
+            .arg(&h.compare)
+            .arg(user())
+            // AppImage/flatpak runtimes leak these into children and break
+            // the system Python that Howdy needs.
+            .env_remove("LD_LIBRARY_PATH")
+            .env_remove("PYTHONHOME")
+            .env_remove("PYTHONPATH")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map_err(|e| format!("Couldn't start Howdy: {e}"))?;
+        match status.code() {
+            Some(0) => Ok(()),
+            Some(10) => Err("Howdy has no face model for you — run: sudo howdy add".into()),
+            Some(11) => Err("Face not recognised. Look at the camera and try again.".into()),
+            Some(13) => Err("Too dark for the camera — add some light and try again.".into()),
+            Some(1) => Err("Howdy couldn't open the camera (in use by another app?).".into()),
+            Some(c) => Err(format!("Face check failed (Howdy code {c}).")),
+            None => Err("Face check was interrupted.".into()),
+        }
+    }
+
+    fn connect() -> Result<SecretService, String> {
+        SecretService::connect(EncryptionType::Dh)
+            .map_err(|_| "Couldn't reach the desktop keyring (GNOME Keyring / KWallet).".to_string())
+    }
+
+    pub fn has_secret() -> bool {
+        let Ok(ss) = connect() else { return false };
+        let has = ss
+            .search_items(HashMap::from(ATTRS))
+            .map(|r| !r.unlocked.is_empty() || !r.locked.is_empty())
+            .unwrap_or(false);
+        has
+    }
+
+    pub fn save_secret(json: &str) -> Result<(), String> {
+        let ss = connect()?;
+        let coll = ss.get_default_collection().map_err(|e| e.to_string())?;
+        let _ = coll.unlock();
+        coll.create_item(
+            "PassVault face unlock",
+            HashMap::from(ATTRS),
+            json.as_bytes(),
+            true,
+            "text/plain",
+        )
+        .map_err(|e| format!("Couldn't save to the keyring: {e}"))?;
+        Ok(())
+    }
+
+    pub fn load_secret() -> Result<String, String> {
+        let ss = connect()?;
+        let found = ss.search_items(HashMap::from(ATTRS)).map_err(|e| e.to_string())?;
+        let item = found
+            .unlocked
+            .into_iter()
+            .chain(found.locked)
+            .next()
+            .ok_or("Face unlock isn't set up on this PC.")?;
+        let _ = item.unlock();
+        let bytes = item.get_secret().map_err(|e| format!("Keyring refused: {e}"))?;
+        String::from_utf8(bytes).map_err(|_| "Saved unlock data is corrupted.".into())
+    }
+
+    pub fn clear_secret() {
+        if let Ok(ss) = connect() {
+            if let Ok(found) = ss.search_items(HashMap::from(ATTRS)) {
+                for item in found.unlocked.into_iter().chain(found.locked) {
+                    let _ = item.delete();
+                }
+            }
+        }
     }
 }
