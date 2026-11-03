@@ -549,8 +549,9 @@ function renderPasswordUnlock() {
     }
     enterMain(accounts);
     await refreshBio();
-    if (state.bio.available && !state.bio.has_saved_secret && !localStorage.getItem("passvault.bioOffered")) {
-      localStorage.setItem("passvault.bioOffered", "1");
+    const offerKey = `passvault.bioOffered:${state.status.vault_path}`;
+    if (state.bio.available && !state.bio.has_saved_secret && !localStorage.getItem(offerKey)) {
+      localStorage.setItem(offerKey, "1");
       const face = state.bio.kind === "face";
       const yes = await confirmSheet(
         `Turn on ${bioName().toLowerCase()}?`,
@@ -1038,7 +1039,7 @@ function pageSettings() {
   const b = state.bio || {};
   const st = state.status;
   const bioRight = b.available
-    ? `<span class="switch"><input type="checkbox" id="bio-sw" ${b.has_saved_secret ? "checked" : ""}><span></span></span>`
+    ? `<label class="switch"><input type="checkbox" id="bio-sw" ${b.has_saved_secret ? "checked" : ""}><span></span></label>`
     : "";
   const bioSub = b.available
     ? b.kind === "face"
