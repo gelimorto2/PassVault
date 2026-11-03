@@ -30,6 +30,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
-  }
+    ],
+    "shortDescription": "Password manager",
+    "longDescription": "PassVault \u2014 encrypted password manager with face unlock, autofill and home-network sync.",
+    "category": "Utility",
+    "linux": {
+      "deb": {
+        "desktopTemplate": "passvault.desktop"
+      }
+    }
+  },
+  "mainBinaryName": "passvault"
 }

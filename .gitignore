@@ -27,3 +27,5 @@ src-tauri/gen/android/build/
 src-tauri/gen/android/.gradle/
 *.keystore
 *.jks
+android-build.log
+build-all.log

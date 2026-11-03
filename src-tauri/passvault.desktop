@@ -1,0 +1,10 @@
+[Desktop Entry]
+Categories=Utility;Security;
+Comment=Encrypted password manager
+Exec={{exec}}
+StartupWMClass={{exec}}
+Icon={{icon}}
+Name={{name}}
+Terminal=false
+Type=Application
+Keywords=password;vault;login;security;

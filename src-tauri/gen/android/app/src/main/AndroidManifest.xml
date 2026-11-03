@@ -28,6 +28,38 @@
             </intent-filter>
         </activity>
 
+        <!-- Samsung/Android autofill (Settings → Passwords and autofill). -->
+        <service
+            android:name=".autofill.PassVaultAutofillService"
+            android:label="PassVault"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE"
+            android:exported="true"
+            tools:targetApi="o">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data android:name="android.autofill" android:resource="@xml/autofill_service" />
+        </service>
+        <activity
+            android:name=".autofill.AutofillAuthActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.PassVault.Translucent" />
+
+        <!-- Quick Panel tile -->
+        <service
+            android:name=".tile.PassVaultTileService"
+            android:label="PassVault"
+            android:icon="@drawable/ic_tile"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <provider
           android:name="androidx.core.content.FileProvider"
           android:authorities="${applicationId}.fileprovider"
